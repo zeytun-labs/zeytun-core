@@ -50,6 +50,7 @@ const DefaultBrowserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebK
 const (
 	TypeSelector = "selector"
 	TypeURLTest  = "urltest"
+	TypeBalancer = "balancer"
 )
 
 func ProxyDisplayName(proxyType string) string {
@@ -118,6 +119,8 @@ func ProxyDisplayName(proxyType string) string {
 		return "Selector"
 	case TypeURLTest:
 		return "URLTest"
+	case TypeBalancer:
+		return "Balancer"
 	default:
 		return "Unknown"
 	}
