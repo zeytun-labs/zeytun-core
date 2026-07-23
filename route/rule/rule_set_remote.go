@@ -101,7 +101,9 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 	if s.lastUpdated.IsZero() {
 		err = s.fetch(ctx, true)
 		if err != nil {
-			return E.Cause(err, "initial rule-set: ", s.tag)
+			// Don't hard-fail core startup: bad DNS / dead proxy / GH blocked is common.
+			// RuleSetUpdater retries on PostStart; cache_file covers subsequent boots.
+			s.logger.Error(E.Cause(err, "initial rule-set: ", s.tag))
 		}
 	}
 	return nil
