@@ -13,6 +13,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/srs"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/experimental/coreevent"
 	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common"
@@ -95,6 +96,7 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 			} else {
 				s.lastUpdated = savedSet.LastUpdated
 				s.lastEtag = savedSet.LastEtag
+				coreevent.EmitRuleSetReady(s.ctx, s.tag)
 			}
 		}
 	}
@@ -104,6 +106,9 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 			// Don't hard-fail core startup: bad DNS / dead proxy / GH blocked is common.
 			// RuleSetUpdater retries on PostStart; cache_file covers subsequent boots.
 			s.logger.Error(E.Cause(err, "initial rule-set: ", s.tag))
+			coreevent.EmitRuleSetInitialFetchFailed(s.ctx, s.tag, err)
+		} else {
+			coreevent.EmitRuleSetReady(s.ctx, s.tag)
 		}
 	}
 	return nil
@@ -199,8 +204,12 @@ func (s *RemoteRuleSet) updateOnce() {
 	err := s.fetch(s.ctx, false)
 	if err != nil {
 		s.logger.Error("fetch rule-set ", s.tag, ": ", err)
-	} else if s.refs.Load() == 0 {
-		s.rules = nil
+		coreevent.EmitRuleSetUpdateFailed(s.ctx, s.tag, err)
+	} else {
+		coreevent.EmitRuleSetUpdated(s.ctx, s.tag)
+		if s.refs.Load() == 0 {
+			s.rules = nil
+		}
 	}
 }
 

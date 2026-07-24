@@ -44,6 +44,41 @@ service StartedService {
   rpc SubscribeOpenVPNStatus(google.protobuf.Empty) returns (stream OpenVPNStatusUpdate) {}
   rpc SubmitOpenVPNChallengeResponse(OpenVPNChallengeSubmission) returns (google.protobuf.Empty) {}
   rpc CancelOpenVPNChallenge(OpenVPNChallengeCancel) returns (google.protobuf.Empty) {}
+
+  // Semantic notifications (ruleset fail/ready, later service/clash). Not traffic/log.
+  rpc SubscribeEvent(SubscribeEventRequest) returns (stream CoreEvent) {}
+}
+
+message SubscribeEventRequest {
+  // empty scopes = all
+  repeated EventScope scopes = 1;
+}
+
+enum EventScope {
+  EVENT_SCOPE_UNSPECIFIED = 0;
+  EVENT_SCOPE_SERVICE = 1;
+  EVENT_SCOPE_CLASH_MODE = 2;
+  EVENT_SCOPE_RULESET = 3;
+  EVENT_SCOPE_SYSTEM = 4;
+}
+
+enum EventSeverity {
+  EVENT_SEVERITY_INFO = 0;
+  EVENT_SEVERITY_WARNING = 1;
+  EVENT_SEVERITY_ERROR = 2;
+  EVENT_SEVERITY_CRITICAL = 3;
+}
+
+message CoreEvent {
+  string id = 1;
+  int64 ts_ms = 2;
+  EventScope scope = 3;
+  // stable machine key, e.g. RULESET_INITIAL_FETCH_FAILED
+  string code = 4;
+  EventSeverity severity = 5;
+  string title = 6;
+  string message = 7;
+  map<string, string> attrs = 8;
 }
 
 message Version {

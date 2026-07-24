@@ -9,6 +9,7 @@ import (
 	"github.com/sagernet/sing-box/common/trafficcontrol"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/experimental/coreevent"
 	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -75,6 +76,11 @@ type OverrideOptions struct {
 func (s *StartedService) newInstance(profileContent string, overrideOptions *OverrideOptions) (*Instance, error) {
 	ctx := service.ExtendContext(s.ctx)
 	service.MustRegister[deprecated.Manager](ctx, new(deprecatedManager))
+	// Event hub lives for this box instance; route/ruleset emit via context.
+	if s.eventHub == nil {
+		s.eventHub = coreevent.NewHub()
+	}
+	service.MustRegister[*coreevent.Hub](ctx, s.eventHub)
 	ctx, cancel := context.WithCancel(ctx)
 	options, err := parseConfig(ctx, profileContent)
 	if err != nil {

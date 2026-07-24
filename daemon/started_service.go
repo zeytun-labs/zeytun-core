@@ -16,6 +16,7 @@ import (
 	"github.com/sagernet/sing-box/common/trafficcontrol"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/experimental/coreevent"
 	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/experimental/locale"
 	"github.com/sagernet/sing-box/log"
@@ -66,6 +67,7 @@ type StartedService struct {
 	urlTestObserver         *observable.Observer[struct{}]
 	clashModeSubscriber     *observable.Subscriber[struct{}]
 	clashModeObserver       *observable.Observer[struct{}]
+	eventHub                *coreevent.Hub
 }
 
 type ServiceOptions struct {
@@ -104,6 +106,7 @@ func NewStartedService(options ServiceOptions) *StartedService {
 		logSubscriber:           observable.NewSubscriber[*log.Entry](128),
 		urlTestSubscriber:       observable.NewSubscriber[struct{}](1),
 		clashModeSubscriber:     observable.NewSubscriber[struct{}](1),
+		eventHub:                coreevent.NewHub(),
 	}
 	s.serviceStatusObserver = observable.NewObserver(s.serviceStatusSubscriber, 2)
 	s.logObserver = observable.NewObserver(s.logSubscriber, 64)
@@ -138,14 +141,39 @@ func (s *StartedService) updateStatus(newStatus ServiceStatus_Type) {
 	statusObject := &ServiceStatus{Status: newStatus}
 	s.serviceStatusSubscriber.Emit(statusObject)
 	s.serviceStatus = statusObject
+	if s.eventHub != nil {
+		s.eventHub.EmitServiceStatus(serviceStatusName(newStatus), "")
+	}
 }
 
 func (s *StartedService) updateStatusError(err error) error {
-	statusObject := &ServiceStatus{Status: ServiceStatus_FATAL, ErrorMessage: err.Error()}
+	msg := ""
+	if err != nil {
+		msg = err.Error()
+	}
+	statusObject := &ServiceStatus{Status: ServiceStatus_FATAL, ErrorMessage: msg}
 	s.serviceStatusSubscriber.Emit(statusObject)
 	s.serviceStatus = statusObject
+	if s.eventHub != nil {
+		s.eventHub.EmitServiceStatus("fatal", msg)
+	}
 	s.serviceAccess.Unlock()
 	return err
+}
+
+func serviceStatusName(t ServiceStatus_Type) string {
+	switch t {
+	case ServiceStatus_STARTING:
+		return "starting"
+	case ServiceStatus_STARTED:
+		return "started"
+	case ServiceStatus_STOPPING:
+		return "stopping"
+	case ServiceStatus_FATAL:
+		return "fatal"
+	default:
+		return "idle"
+	}
 }
 
 func (s *StartedService) waitForStarted(ctx context.Context) error {
@@ -598,6 +626,7 @@ func (s *StartedService) SetClashMode(ctx context.Context, request *ClashMode) (
 		return nil, status.Error(codes.NotFound, "clash mode not available")
 	}
 	clashServer.SetMode(request.Mode)
+	// Mode hook → forwardClashModeToEventHub dual-publishes CoreEvent.
 	return &emptypb.Empty{}, nil
 }
 
@@ -1821,6 +1850,69 @@ func (s *StartedService) CancelOpenVPNChallenge(ctx context.Context, request *Op
 }
 
 func (s *StartedService) mustEmbedUnimplementedStartedServiceServer() {
+}
+
+func (s *StartedService) SubscribeEvent(req *SubscribeEventRequest, server grpc.ServerStreamingServer[CoreEvent]) error {
+	hub := s.eventHub
+	if hub == nil {
+		hub = coreevent.NewHub()
+		s.eventHub = hub
+	}
+	want := make(map[EventScope]bool)
+	for _, sc := range req.GetScopes() {
+		want[sc] = true
+	}
+	match := func(scope EventScope) bool {
+		if len(want) == 0 {
+			return true
+		}
+		return want[scope]
+	}
+	toPB := func(e *coreevent.Event) *CoreEvent {
+		if e == nil {
+			return nil
+		}
+		return &CoreEvent{
+			Id:       e.ID,
+			TsMs:     e.TsMs,
+			Scope:    EventScope(e.Scope),
+			Code:     e.Code,
+			Severity: EventSeverity(e.Severity),
+			Title:    e.Title,
+			Message:  e.Message,
+			Attrs:    e.Attrs,
+		}
+	}
+	for _, e := range hub.Snapshot() {
+		if !match(EventScope(e.Scope)) {
+			continue
+		}
+		if err := server.Send(toPB(e)); err != nil {
+			return err
+		}
+	}
+	sub, done, err := hub.Subscribe()
+	if err != nil {
+		return err
+	}
+	defer hub.UnSubscribe(sub)
+	for {
+		select {
+		case <-s.ctx.Done():
+			return s.ctx.Err()
+		case <-server.Context().Done():
+			return server.Context().Err()
+		case e := <-sub:
+			if e == nil || !match(EventScope(e.Scope)) {
+				continue
+			}
+			if err := server.Send(toPB(e)); err != nil {
+				return err
+			}
+		case <-done:
+			return nil
+		}
+	}
 }
 
 func (s *StartedService) WriteMessage(level log.Level, message string) {
