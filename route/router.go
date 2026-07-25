@@ -48,12 +48,19 @@ type Router struct {
 	trackers          []adapter.ConnectionTracker
 	platformInterface adapter.PlatformInterface
 	started           bool
+	connectionAsk     *ConnectionAsk
 }
 
 func NewRouter(ctx context.Context, logFactory log.Factory, options option.RouteOptions, dnsOptions option.DNSOptions) *Router {
+	logger := logFactory.NewLogger("router")
+	// connection_ask needs process path for grouping
+	needFindProcess := hasRule(options.Rules, isProcessRule) || hasDNSRule(dnsOptions.Rules, isProcessDNSRule) || options.FindProcess
+	if options.ConnectionAsk != nil && options.ConnectionAsk.Enabled {
+		needFindProcess = true
+	}
 	return &Router{
 		ctx:               ctx,
-		logger:            logFactory.NewLogger("router"),
+		logger:            logger,
 		inbound:           service.FromContext[adapter.InboundManager](ctx),
 		outbound:          service.FromContext[adapter.OutboundManager](ctx),
 		dns:               service.FromContext[adapter.DNSRouter](ctx),
@@ -63,12 +70,21 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.Route
 		httpClientManager: service.FromContext[adapter.HTTPClientManager](ctx),
 		rules:             make([]adapter.Rule, 0, len(options.Rules)),
 		ruleSetMap:        make(map[string]adapter.RuleSet),
-		needFindProcess:   hasRule(options.Rules, isProcessRule) || hasDNSRule(dnsOptions.Rules, isProcessDNSRule) || options.FindProcess,
+		needFindProcess:   needFindProcess,
 		needFindNeighbor:  hasRule(options.Rules, isNeighborRule) || hasDNSRule(dnsOptions.Rules, isNeighborDNSRule) || hasLocalNeighborDNSServer(dnsOptions.Servers) || options.FindNeighbor,
 		leaseFiles:        options.DHCPLeaseFiles,
 		pauseManager:      service.FromContext[pause.Manager](ctx),
 		platformInterface: service.FromContext[adapter.PlatformInterface](ctx),
+		connectionAsk:     newConnectionAsk(ctx, logger, options.ConnectionAsk),
 	}
+}
+
+// DecideConnectionAsk resolves a held unmatched connection (Clash API / gRPC).
+func (r *Router) DecideConnectionAsk(id, outbound string, reject bool) error {
+	if r.connectionAsk == nil || !r.connectionAsk.Enabled() {
+		return E.New("connection ask disabled")
+	}
+	return r.connectionAsk.Decide(id, outbound, reject)
 }
 
 func (r *Router) Initialize(rules []option.Rule, ruleSets []option.RuleSet) error {

@@ -152,12 +152,36 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 		}
 	}
 	if selectedRule == nil {
-		defaultOutbound := r.outbound.Default()
-		if !common.Contains(defaultOutbound.Network(), N.NetworkTCP) {
-			buf.ReleaseMulti(buffers)
-			return E.New("TCP is not supported by default outbound: ", defaultOutbound.Tag())
+		// Ask mode: hold unmatched TCP until UI Decide or timeout→final.
+		if r.connectionAsk != nil && r.connectionAsk.Enabled() {
+			if decision, ok := r.connectionAsk.Resolve(ctx, &metadata); ok {
+				if decision.Reject {
+					buf.ReleaseMulti(buffers)
+					return E.New("connection rejected by user")
+				}
+				if decision.Outbound != "" {
+					var loaded bool
+					selectedOutbound, loaded = r.outbound.Outbound(decision.Outbound)
+					if !loaded {
+						buf.ReleaseMulti(buffers)
+						return E.New("outbound not found: ", decision.Outbound)
+					}
+					if !common.Contains(selectedOutbound.Network(), N.NetworkTCP) {
+						buf.ReleaseMulti(buffers)
+						return E.New("TCP is not supported by outbound: ", selectedOutbound.Tag())
+					}
+					r.logger.InfoContext(ctx, "connection ask → ", selectedOutbound.Tag())
+				}
+			}
 		}
-		selectedOutbound = defaultOutbound
+		if selectedOutbound == nil {
+			defaultOutbound := r.outbound.Default()
+			if !common.Contains(defaultOutbound.Network(), N.NetworkTCP) {
+				buf.ReleaseMulti(buffers)
+				return E.New("TCP is not supported by default outbound: ", defaultOutbound.Tag())
+			}
+			selectedOutbound = defaultOutbound
+		}
 	}
 
 	for _, buffer := range buffers {

@@ -21,6 +21,17 @@ type RouteOptions struct {
 	DefaultFallbackNetworkType badoption.Listable[InterfaceType] `json:"default_fallback_network_type,omitempty"`
 	DefaultFallbackDelay       badoption.Duration                `json:"default_fallback_delay,omitempty"`
 	DefaultHTTPClient          string                            `json:"default_http_client,omitempty"`
+	// ConnectionAsk: hold unmatched TCP and ask UI (timeout → final).
+	ConnectionAsk *ConnectionAskOptions `json:"connection_ask,omitempty"`
+}
+
+// ConnectionAskOptions enables interactive routing for unmatched connections.
+type ConnectionAskOptions struct {
+	Enabled   bool   `json:"enabled,omitempty"`
+	Timeout   int    `json:"timeout_ms,omitempty"` // default 60000
+	GroupBy   string `json:"group_by,omitempty"`  // process | process_dest
+	// OnTimeout is always final; field reserved for docs/compat.
+	OnTimeout string `json:"on_timeout,omitempty"`
 }
 
 type GeoIPOptions struct {

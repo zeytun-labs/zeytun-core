@@ -2,6 +2,7 @@ package coreevent
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,11 +16,12 @@ import (
 type Scope int32
 
 const (
-	ScopeUnspecified Scope = 0
-	ScopeService     Scope = 1
-	ScopeClashMode   Scope = 2
-	ScopeRuleSet     Scope = 3
-	ScopeSystem      Scope = 4
+	ScopeUnspecified   Scope = 0
+	ScopeService       Scope = 1
+	ScopeClashMode     Scope = 2
+	ScopeRuleSet       Scope = 3
+	ScopeSystem        Scope = 4
+	ScopeConnectionAsk Scope = 5
 )
 
 type Severity int32
@@ -45,6 +47,8 @@ const (
 	CodeServiceFatal    = "SERVICE_FATAL"
 
 	CodeClashModeChanged = "CLASH_MODE_CHANGED"
+
+	CodeConnectionAsk = "CONNECTION_ASK"
 )
 
 type Event struct {
@@ -96,6 +100,20 @@ func (h *Hub) Snapshot() []*Event {
 	return out
 }
 
+func eventDedupeKey(e *Event) string {
+	key := e.Code
+	if e.Scope == ScopeService {
+		return "SERVICE"
+	}
+	if e.Scope == ScopeClashMode {
+		return "CLASH_MODE"
+	}
+	if tag, ok := e.Attrs["tag"]; ok && tag != "" {
+		return e.Code + "|" + tag
+	}
+	return key
+}
+
 func (h *Hub) Emit(e *Event) {
 	if e == nil {
 		return
@@ -106,14 +124,7 @@ func (h *Hub) Emit(e *Event) {
 	if e.TsMs == 0 {
 		e.TsMs = time.Now().UnixMilli()
 	}
-	key := e.Code
-	if e.Scope == ScopeService {
-		key = "SERVICE"
-	} else if e.Scope == ScopeClashMode {
-		key = "CLASH_MODE"
-	} else if tag, ok := e.Attrs["tag"]; ok && tag != "" {
-		key = e.Code + "|" + tag
-	}
+	key := eventDedupeKey(e)
 	h.access.Lock()
 	h.last[key] = e
 	h.ring = append(h.ring, e)
@@ -122,6 +133,35 @@ func (h *Hub) Emit(e *Event) {
 	}
 	h.access.Unlock()
 	h.subscriber.Emit(e)
+}
+
+// Forget drops last-snapshot entry so SubscribeEvent won't re-deliver resolved asks.
+func (h *Hub) Forget(code, tag string) {
+	if h == nil {
+		return
+	}
+	key := code
+	if tag != "" {
+		key = code + "|" + tag
+	}
+	h.access.Lock()
+	delete(h.last, key)
+	h.access.Unlock()
+}
+
+// ForgetCodePrefix clears last-snapshot keys for a code (and code|tag variants).
+func (h *Hub) ForgetCodePrefix(code string) {
+	if h == nil || code == "" {
+		return
+	}
+	prefix := code + "|"
+	h.access.Lock()
+	for k := range h.last {
+		if k == code || strings.HasPrefix(k, prefix) {
+			delete(h.last, k)
+		}
+	}
+	h.access.Unlock()
 }
 
 func FromContext(ctx context.Context) *Hub {
@@ -200,6 +240,11 @@ func (h *Hub) EmitServiceStatus(statusName, errMsg string) {
 	if h == nil {
 		return
 	}
+	// Pending ask ids die with the router; drop snapshots so UI/gRPC don't revive them.
+	switch statusName {
+	case "starting", "started", "stopping", "idle", "fatal":
+		h.ForgetCodePrefix(CodeConnectionAsk)
+	}
 	code := CodeServiceIdle
 	sev := SeverityInfo
 	title := "Core idle"
@@ -243,5 +288,33 @@ func (h *Hub) EmitClashMode(mode string) {
 		Title:    "Outbound mode changed",
 		Message:  mode,
 		Attrs:    map[string]string{"mode": mode},
+	})
+}
+
+// EmitConnectionAsk notifies desktop to choose outbound for a held connection.
+func EmitConnectionAsk(ctx context.Context, id string, attrs map[string]string) {
+	if attrs == nil {
+		attrs = map[string]string{}
+	}
+	attrs["id"] = id
+	// snapshot key by pending id so multiple asks coexist
+	if attrs["tag"] == "" {
+		attrs["tag"] = id
+	}
+	proc := attrs["process_name"]
+	if proc == "" {
+		proc = attrs["process_path"]
+	}
+	dest := attrs["dest_host"]
+	if dest == "" {
+		dest = attrs["dest"]
+	}
+	Emit(ctx, &Event{
+		Scope:    ScopeConnectionAsk,
+		Code:     CodeConnectionAsk,
+		Severity: SeverityWarning,
+		Title:    "New connection",
+		Message:  proc + " → " + dest,
+		Attrs:    attrs,
 	})
 }

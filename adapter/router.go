@@ -27,6 +27,9 @@ type Router interface {
 	NeighborResolver() NeighborResolver
 	AppendTracker(tracker ConnectionTracker)
 	ResetNetwork()
+	// DecideConnectionAsk resolves a held unmatched connection (id from CONNECTION_ASK event).
+	// No-op / error when ask mode off or id unknown.
+	DecideConnectionAsk(id, outbound string, reject bool) error
 }
 
 type PreMatchAction uint8
