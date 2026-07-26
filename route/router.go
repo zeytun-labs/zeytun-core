@@ -2,6 +2,7 @@ package route
 
 import (
 	"context"
+	sjson "github.com/sagernet/sing/common/json"
 	"os"
 	"runtime"
 	"time"
@@ -49,6 +50,8 @@ type Router struct {
 	platformInterface adapter.PlatformInterface
 	started           bool
 	connectionAsk     *ConnectionAsk
+	liveRules         *LiveRuleStore
+	liveSeed          *option.LiveRulesOptions
 }
 
 func NewRouter(ctx context.Context, logFactory log.Factory, options option.RouteOptions, dnsOptions option.DNSOptions) *Router {
@@ -57,6 +60,9 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.Route
 	needFindProcess := hasRule(options.Rules, isProcessRule) || hasDNSRule(dnsOptions.Rules, isProcessDNSRule) || options.FindProcess
 	if options.ConnectionAsk != nil && options.ConnectionAsk.Enabled {
 		needFindProcess = true
+	}
+	if options.LiveRules != nil {
+		needFindProcess = needFindProcess || hasOptionLiveProcess(options.LiveRules.Temp) || hasOptionLiveProcess(options.LiveRules.Permanent)
 	}
 	return &Router{
 		ctx:               ctx,
@@ -76,7 +82,20 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.Route
 		pauseManager:      service.FromContext[pause.Manager](ctx),
 		platformInterface: service.FromContext[adapter.PlatformInterface](ctx),
 		connectionAsk:     newConnectionAsk(ctx, logger, options.ConnectionAsk),
+		liveRules:         newLiveRuleStore(ctx, logger),
+		liveSeed:          options.LiveRules,
 	}
+}
+
+func hasOptionLiveProcess(items []option.LiveRule) bool {
+	for _, item := range items {
+		if item.Rule.Type == "" || item.Rule.Type == C.RuleTypeDefault {
+			if isProcessRule(item.Rule.DefaultOptions) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // DecideConnectionAsk resolves a held unmatched connection (Clash API / gRPC).
@@ -85,6 +104,102 @@ func (r *Router) DecideConnectionAsk(id, outbound string, reject bool) error {
 		return E.New("connection ask disabled")
 	}
 	return r.connectionAsk.Decide(id, outbound, reject)
+}
+
+func (r *Router) markProcessFromSpecs(items []LiveRuleSpec) {
+	for _, item := range items {
+		if item.Rule.Type == "" || item.Rule.Type == C.RuleTypeDefault {
+			if isProcessRule(item.Rule.DefaultOptions) {
+				r.needFindProcess = true
+				return
+			}
+		}
+	}
+}
+
+func optionLiveToSpecs(items []option.LiveRule) []LiveRuleSpec {
+	out := make([]LiveRuleSpec, 0, len(items))
+	for _, it := range items {
+		out = append(out, LiveRuleSpec{ID: it.ID, ExpiresAt: it.ExpiresAt, Rule: it.Rule})
+	}
+	return out
+}
+
+// ReplaceLiveRules swaps temp+permanent user overlays (no config reload).
+func (r *Router) ReplaceLiveRules(payload LiveRulesPayload) error {
+	if r.liveRules == nil {
+		return E.New("live rules unavailable")
+	}
+	r.markProcessFromSpecs(payload.Temp)
+	r.markProcessFromSpecs(payload.Permanent)
+	return r.liveRules.Replace(payload)
+}
+
+// ReplaceTempRules swaps only the temp segment.
+func (r *Router) ReplaceTempRules(items []TempRuleSpec) error {
+	if r.liveRules == nil {
+		return E.New("live rules unavailable")
+	}
+	r.markProcessFromSpecs(items)
+	return r.liveRules.ReplaceTemp(items)
+}
+
+// ReplacePermanentRules swaps only the permanent user segment.
+func (r *Router) ReplacePermanentRules(items []LiveRuleSpec) error {
+	if r.liveRules == nil {
+		return E.New("live rules unavailable")
+	}
+	r.markProcessFromSpecs(items)
+	return r.liveRules.ReplacePermanent(items)
+}
+
+// ReplaceTempRulesJSON implements adapter.Router (JSON array of temp specs).
+// Must use sing json + context so option.Rule UnmarshalJSONContext runs
+// (stdlib encoding/json silently leaves rules empty → "missing conditions").
+func (r *Router) ReplaceTempRulesJSON(payload []byte) error {
+	var items []TempRuleSpec
+	if len(payload) == 0 || string(payload) == "null" {
+		return r.ReplaceTempRules(nil)
+	}
+	if err := sjson.UnmarshalContext(r.ctx, payload, &items); err != nil {
+		return err
+	}
+	return r.ReplaceTempRules(items)
+}
+
+// ReplacePermanentRulesJSON implements adapter.Router (JSON array).
+func (r *Router) ReplacePermanentRulesJSON(payload []byte) error {
+	var items []LiveRuleSpec
+	if len(payload) == 0 || string(payload) == "null" {
+		return r.ReplacePermanentRules(nil)
+	}
+	if err := sjson.UnmarshalContext(r.ctx, payload, &items); err != nil {
+		return err
+	}
+	return r.ReplacePermanentRules(items)
+}
+
+// ReplaceLiveRulesJSON full {temp,permanent}.
+func (r *Router) ReplaceLiveRulesJSON(payload []byte) error {
+	if len(payload) == 0 || string(payload) == "null" {
+		return r.ReplaceLiveRules(LiveRulesPayload{})
+	}
+	var body LiveRulesPayload
+	if err := sjson.UnmarshalContext(r.ctx, payload, &body); err != nil {
+		return err
+	}
+	return r.ReplaceLiveRules(body)
+}
+
+// seedLiveRulesFromConfig loads route.live_rules into the store (cold start / SIGHUP).
+func (r *Router) seedLiveRulesFromConfig() error {
+	if r.liveRules == nil || r.liveSeed == nil {
+		return nil
+	}
+	return r.ReplaceLiveRules(LiveRulesPayload{
+		Temp:      optionLiveToSpecs(r.liveSeed.Temp),
+		Permanent: optionLiveToSpecs(r.liveSeed.Permanent),
+	})
 }
 
 func (r *Router) Initialize(rules []option.Rule, ruleSets []option.RuleSet) error {
@@ -111,6 +226,9 @@ func (r *Router) Initialize(rules []option.Rule, ruleSets []option.RuleSet) erro
 			r.ruleSets = append(r.ruleSets, ruleSet)
 			r.ruleSetMap[tag] = ruleSet
 		}
+	}
+	if err := r.seedLiveRulesFromConfig(); err != nil {
+		return err
 	}
 	return nil
 }

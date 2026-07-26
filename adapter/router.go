@@ -30,6 +30,10 @@ type Router interface {
 	// DecideConnectionAsk resolves a held unmatched connection (id from CONNECTION_ASK event).
 	// No-op / error when ask mode off or id unknown.
 	DecideConnectionAsk(id, outbound string, reject bool) error
+	// Live user rules (temp + permanent) without reloading config.
+	ReplaceTempRulesJSON(payload []byte) error
+	ReplacePermanentRulesJSON(payload []byte) error
+	ReplaceLiveRulesJSON(payload []byte) error
 }
 
 type PreMatchAction uint8

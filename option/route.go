@@ -23,15 +23,30 @@ type RouteOptions struct {
 	DefaultHTTPClient          string                            `json:"default_http_client,omitempty"`
 	// ConnectionAsk: hold unmatched TCP and ask UI (timeout → final).
 	ConnectionAsk *ConnectionAskOptions `json:"connection_ask,omitempty"`
+	// LiveRules: user temp + permanent rules loaded into LiveRuleStore (match-time filter; no reload for expiry/delete).
+	LiveRules *LiveRulesOptions `json:"live_rules,omitempty"`
 }
 
 // ConnectionAskOptions enables interactive routing for unmatched connections.
 type ConnectionAskOptions struct {
-	Enabled   bool   `json:"enabled,omitempty"`
-	Timeout   int    `json:"timeout_ms,omitempty"` // default 60000
-	GroupBy   string `json:"group_by,omitempty"`  // process | process_dest
+	Enabled bool   `json:"enabled,omitempty"`
+	Timeout int    `json:"timeout_ms,omitempty"` // default 60000
+	GroupBy string `json:"group_by,omitempty"`  // process | process_dest
 	// OnTimeout is always final; field reserved for docs/compat.
 	OnTimeout string `json:"on_timeout,omitempty"`
+}
+
+// LiveRulesOptions is baked into config for cold start; runtime updates via Clash API.
+type LiveRulesOptions struct {
+	Temp      []LiveRule `json:"temp,omitempty"`
+	Permanent []LiveRule `json:"permanent,omitempty"`
+}
+
+// LiveRule is one user rule with optional expiry (0 = permanent).
+type LiveRule struct {
+	ID        uint64 `json:"id"`
+	ExpiresAt int64  `json:"expires_at,omitempty"` // unix ms
+	Rule      Rule   `json:"rule"`
 }
 
 type GeoIPOptions struct {
