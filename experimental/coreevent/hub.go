@@ -175,23 +175,15 @@ func Emit(ctx context.Context, e *Event) {
 }
 
 func EmitRuleSetInitialFetchFailed(ctx context.Context, tag string, err error) {
-	msg := ""
-	if err != nil {
-		msg = err.Error()
-	}
-	Emit(ctx, &Event{
-		Scope:    ScopeRuleSet,
-		Code:     CodeRuleSetInitialFetchFailed,
-		Severity: SeverityError,
-		Title:    "Ruleset not downloaded",
-		Message:  msg,
-		Attrs: map[string]string{
-			"tag": tag,
-		},
-	})
+	EmitRuleSetFetchFailed(ctx, tag, CodeRuleSetInitialFetchFailed, SeverityError, "Ruleset not downloaded", err, nil)
 }
 
 func EmitRuleSetReady(ctx context.Context, tag string) {
+	// Drop fail snapshots so SubscribeEvent re-connect doesn't re-poison UI after success.
+	if h := FromContext(ctx); h != nil {
+		h.Forget(CodeRuleSetInitialFetchFailed, tag)
+		h.Forget(CodeRuleSetUpdateFailed, tag)
+	}
 	Emit(ctx, &Event{
 		Scope:    ScopeRuleSet,
 		Code:     CodeRuleSetReady,
@@ -199,29 +191,47 @@ func EmitRuleSetReady(ctx context.Context, tag string) {
 		Title:    "Ruleset ready",
 		Message:  "",
 		Attrs: map[string]string{
-			"tag": tag,
+			"tag":    tag,
+			"status": "ready",
 		},
 	})
 }
 
 func EmitRuleSetUpdateFailed(ctx context.Context, tag string, err error) {
+	EmitRuleSetFetchFailed(ctx, tag, CodeRuleSetUpdateFailed, SeverityWarning, "Ruleset update failed", err, nil)
+}
+
+// EmitRuleSetFetchFailed is the shared fail path; extra attrs (url, detour) optional.
+func EmitRuleSetFetchFailed(ctx context.Context, tag, code string, sev Severity, title string, err error, extra map[string]string) {
 	msg := ""
 	if err != nil {
 		msg = err.Error()
 	}
+	attrs := map[string]string{
+		"tag":    tag,
+		"status": "failed",
+		"error":  msg,
+	}
+	for k, v := range extra {
+		if v != "" {
+			attrs[k] = v
+		}
+	}
 	Emit(ctx, &Event{
 		Scope:    ScopeRuleSet,
-		Code:     CodeRuleSetUpdateFailed,
-		Severity: SeverityWarning,
-		Title:    "Ruleset update failed",
+		Code:     code,
+		Severity: sev,
+		Title:    title,
 		Message:  msg,
-		Attrs: map[string]string{
-			"tag": tag,
-		},
+		Attrs:    attrs,
 	})
 }
 
 func EmitRuleSetUpdated(ctx context.Context, tag string) {
+	if h := FromContext(ctx); h != nil {
+		h.Forget(CodeRuleSetInitialFetchFailed, tag)
+		h.Forget(CodeRuleSetUpdateFailed, tag)
+	}
 	Emit(ctx, &Event{
 		Scope:    ScopeRuleSet,
 		Code:     CodeRuleSetUpdated,
@@ -229,7 +239,8 @@ func EmitRuleSetUpdated(ctx context.Context, tag string) {
 		Title:    "Ruleset updated",
 		Message:  "",
 		Attrs: map[string]string{
-			"tag": tag,
+			"tag":    tag,
+			"status": "ready",
 		},
 	})
 }

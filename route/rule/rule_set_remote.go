@@ -84,10 +84,17 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 	s.cacheFile = service.FromContext[adapter.CacheFile](s.ctx)
 	transport, err := s.resolveTransport()
 	if err != nil {
-		return E.Cause(err, "create rule-set http client")
+		// Soft-fail: bad http_client/detour must not kill core start.
+		s.logger.Error(E.Cause(err, "create rule-set http client: ", s.tag))
+		coreevent.EmitRuleSetFetchFailed(
+			s.ctx, s.tag, coreevent.CodeRuleSetInitialFetchFailed, coreevent.SeverityError,
+			"Ruleset not downloaded", err, s.fetchDebugAttrs(),
+		)
+		return nil
 	}
 	startContext.Register(transport)
 	s.httpClient = &http.Client{Transport: transport}
+	hadCache := false
 	if s.cacheFile != nil {
 		if savedSet := s.cacheFile.LoadRuleSet(s.tag); savedSet != nil {
 			err = s.loadBytes(savedSet.Content)
@@ -96,22 +103,46 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 			} else {
 				s.lastUpdated = savedSet.LastUpdated
 				s.lastEtag = savedSet.LastEtag
-				coreevent.EmitRuleSetReady(s.ctx, s.tag)
+				hadCache = true
+				// No READY emit here — wait for network outcome so UI stays Downloading until fetch ends.
 			}
 		}
 	}
-	if s.lastUpdated.IsZero() {
-		err = s.fetch(ctx, true)
-		if err != nil {
-			// Don't hard-fail core startup: bad DNS / dead proxy / GH blocked is common.
-			// RuleSetUpdater retries on PostStart; cache_file covers subsequent boots.
-			s.logger.Error(E.Cause(err, "initial rule-set: ", s.tag))
-			coreevent.EmitRuleSetInitialFetchFailed(s.ctx, s.tag, err)
+	// Always try network on start (not only when cache miss). Soft-fail keeps cache rules.
+	err = s.fetch(ctx, true)
+	if err != nil {
+		// Don't hard-fail core startup: bad DNS / dead proxy / GH blocked is common.
+		s.logger.Error(E.Cause(err, "initial rule-set: ", s.tag))
+		if hadCache {
+			coreevent.EmitRuleSetFetchFailed(
+				s.ctx, s.tag, coreevent.CodeRuleSetUpdateFailed, coreevent.SeverityWarning,
+				"Ruleset update failed", err, s.fetchDebugAttrs(),
+			)
 		} else {
-			coreevent.EmitRuleSetReady(s.ctx, s.tag)
+			coreevent.EmitRuleSetFetchFailed(
+				s.ctx, s.tag, coreevent.CodeRuleSetInitialFetchFailed, coreevent.SeverityError,
+				"Ruleset not downloaded", err, s.fetchDebugAttrs(),
+			)
 		}
+	} else {
+		coreevent.EmitRuleSetReady(s.ctx, s.tag)
 	}
 	return nil
+}
+
+func (s *RemoteRuleSet) fetchDebugAttrs() map[string]string {
+	detour := ""
+	if s.options.RemoteOptions.HTTPClient != nil && s.options.RemoteOptions.HTTPClient.Detour != "" {
+		detour = s.options.RemoteOptions.HTTPClient.Detour
+	} else if s.options.RemoteOptions.DownloadDetour != "" { //nolint:staticcheck
+		detour = s.options.RemoteOptions.DownloadDetour //nolint:staticcheck
+	} else {
+		detour = "default/direct"
+	}
+	return map[string]string{
+		"url":    s.url,
+		"detour": detour,
+	}
 }
 
 func (s *RemoteRuleSet) Metadata() adapter.RuleSetMetadata {
@@ -204,7 +235,10 @@ func (s *RemoteRuleSet) updateOnce() {
 	err := s.fetch(s.ctx, false)
 	if err != nil {
 		s.logger.Error("fetch rule-set ", s.tag, ": ", err)
-		coreevent.EmitRuleSetUpdateFailed(s.ctx, s.tag, err)
+		coreevent.EmitRuleSetFetchFailed(
+			s.ctx, s.tag, coreevent.CodeRuleSetUpdateFailed, coreevent.SeverityWarning,
+			"Ruleset update failed", err, s.fetchDebugAttrs(),
+		)
 	} else {
 		coreevent.EmitRuleSetUpdated(s.ctx, s.tag)
 		if s.refs.Load() == 0 {
