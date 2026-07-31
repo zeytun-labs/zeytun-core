@@ -1,62 +1,192 @@
 # 🫒 zeytun-core
 
 ![Go Version](https://img.shields.io/github/go-mod/go-version/sadeqi-ah/zeytun-core?style=flat-square)
-![License](https://img.shields.io/badge/License-GPL%203.0%20Modified-blue.svg?style=flat-square)
+![License](https://img.shields.io/badge/License-GPL%203.0-blue.svg?style=flat-square)
 
-**Network and routing core for the [Zeytun](https://github.com/zeytun-labs) desktop app.**
+**Application-aware network routing and traffic control engine for the Zeytun ecosystem.**
 
-`zeytun-core` handles proxy outbounds, policy groups, DNS, rule-based routing, TUN/system integration, and live control surfaces (gRPC / Clash API) used by the Zeytun client.
+`zeytun-core` is an open-source networking engine focused on intelligent routing, proxy management, DNS handling, TUN/system integration, and runtime network control.
 
-> ⚠️ **Note:** This is **not** a general-purpose standalone proxy platform product. It is a highly specialized engine tailored specifically for the Zeytun application ecosystem.
+The project is designed as the foundation for the upcoming Zeytun desktop application, providing the low-level networking capabilities required for interactive routing, traffic visibility, and advanced network policy management.
 
----
+Unlike traditional proxy cores that mainly focus on forwarding traffic, `zeytun-core` aims to provide deeper control over how applications communicate with the internet through policy-driven routing and live connection management.
 
-## ✨ Notable Extensions (vs Upstream)
-
-This core includes several Zeytun-oriented modifications and custom features built on top of the fork base:
-
-* **⚖️ Advanced Load Balancing:** Added dedicated balancer outbounds supporting multiple strategies (`round-robin`, `consistent-hashing`, `sticky-sessions`, `failover`, `weighted`, `least-connections`).
-* **⚡ Next-Gen Transports:** Native support for the **XHTTP** transport protocol.
-* **🛡️ Interactive & Live Routing:**
-  * **Connection-Ask:** Intercepts unmatched TCP connections for interactive routing decisions (firewall-like behavior).
-  * **Live Rule Overlay:** Support for injecting temporary and permanent routing rules on the fly.
-* **🔄 Resilient Rule-sets:** Implemented remote rule-set soft-fail and background re-fetching on startup (prevents hard crashes on DNS failures).
-* **🔌 Deep App Integration:** CoreEvent gRPC stream and lifecycle hooks designed specifically for seamless communication with the Zeytun desktop UI.
-
-*(Configuration remains fully compatible with standard sing-box JSON format wherever not explicitly extended.)*
+> ⚠️ **Note:** `zeytun-core` is a specialized networking engine developed for the Zeytun ecosystem. It is not intended to be a standalone proxy platform.
 
 ---
 
-## ⚖️ Relationship to sing-box & License
+# ✨ Zeytun Extensions
 
-`zeytun-core` is a **derivative** of [sing-box](https://github.com/SagerNet/sing-box) (SagerNet / nekohasekai).
+`zeytun-core` is based on [sing-box](https://github.com/SagerNet/sing-box) and extends it with Zeytun-specific functionality focused on interactive routing, traffic visibility, and desktop integration.
 
-It is **not** affiliated with, endorsed by, or an official product of SagerNet or the sing-box project. Per upstream terms, this work does **not** use the sing-box name as its product identity and does **not** claim association with that application.
+## 🛡 Interactive Routing
 
-* **Upstream project and docs:** [sing-box.sagernet.org](https://sing-box.sagernet.org)
+One of the core concepts of Zeytun is firewall-like interactive routing.
 
+When a network connection does not match existing routing policies, the core can temporarily hold the connection and expose it to a controlling client for user decision-making.
 
-### License Terms
+Possible actions include:
 
-```text
-Copyright (C) 2022 by nekohasekai <contact-sagernet@sekai.icu>
+- Block the connection
+- Allow the connection directly
+- Route the connection through a selected proxy
+- Apply a custom routing policy
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+These decisions can be forwarded to higher-level components, which can manage rule persistence and lifecycle before applying them back to the core.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+---
 
-You should have received a copy of the GNU General Public License
-along with this program. If not, see [http://www.gnu.org/licenses/](http://www.gnu.org/licenses/).
+## 🔄 Live Routing Updates
 
-In addition, no derivative work may use the name or imply association
-with this application without prior consent.
+`zeytun-core` supports runtime routing updates without requiring a restart.
+
+The core provides mechanisms for external controllers to inject and update routing rules while the networking engine is running.
+
+Capabilities include:
+
+- Live rule injection
+- Runtime routing table updates
+- External control through APIs
+- Applying routing decisions without restarting the core
+
+Rule lifecycle management, persistence, and expiration policies are handled by higher-level components such as the Zeytun backend.
+
+---
+
+## 📊 Traffic Visibility and Event Streaming
+
+The core provides live information required for network analysis and user-facing interfaces.
+
+Available capabilities include:
+
+- Connection events
+- DNS activity
+- Network statistics
+- Connection metadata
+- Process-related information
+- Runtime lifecycle events
+
+These capabilities are exposed through control interfaces designed for integration with desktop applications and other clients.
+
+---
+
+## ⚖ Advanced Load Balancing
+
+Zeytun extends outbound management with additional balancing strategies.
+
+Supported strategies include:
+
+- `round-robin`
+- `consistent-hashing`
+- `sticky-sessions`
+- `failover`
+- `weighted`
+- `least-connections`
+
+---
+
+## ⚡ Transport and Networking Extensions
+
+Additional networking improvements developed for the Zeytun ecosystem include:
+
+- Native XHTTP transport support
+- Zeytun-specific routing improvements
+- Extended runtime control capabilities
+
+---
+
+## 🔌 System Networking Integration
+
+Current capabilities:
+
+- TUN-based routing
+- Rule-based routing
+- Proxy outbound management
+- DNS handling
+- Runtime control APIs
+
+Planned integrations:
+
+- macOS Network Extensions
+- Windows Filtering Platform
+- Advanced process-level network interception
+
+---
+
+# 🔧 Configuration Compatibility
+
+Where Zeytun-specific extensions are not required, configuration remains compatible with standard sing-box JSON configuration formats.
+
+Existing sing-box configurations can be reused with minimal modifications.
+
+---
+
+# 🏗 Architecture
+
+`zeytun-core` provides the networking foundation for future Zeytun clients:
 
 ```
+┌──────────────────────────────────────┐
+│          Zeytun Desktop              │
+│       (Tauri + Svelte)               │
+│                                      │
+│  UI / User Interaction / Analytics   │
+└──────────────────┬───────────────────┘
+                   │
+                   │
+┌──────────────────▼───────────────────┐
+│          Zeytun Backend              │
+│                                      │
+│  Policy Management                   │
+│  Rule Lifecycle                      │
+│  Persistence                         │
+│  User Decisions                      │
+└──────────────────┬───────────────────┘
+                   │
+                   │ gRPC
+                   │
+┌──────────────────▼───────────────────┐
+│            zeytun-core               │
+│                                      │
+│  Routing Engine                      │
+│  Rule Evaluation                     │
+│  DNS                                 │
+│  TUN                                 │
+│  Proxy Outbounds                     │
+│  Live Rule Injection                 │
+└──────────────────┬───────────────────┘
+                   │
+                   ▼
+          ┌────────────────┐
+          │ Operating      │
+          │ System         │
+          └────────────────┘
+```
+---
 
-**Full text:** [`LICENSE`](./LICENSE). Upstream copyright is strictly retained. Modifications specifically made for Zeytun are distributed under the exact same **GPL-3.0** terms.
+# ⚖ Relationship to sing-box
+
+`zeytun-core` is a derivative work of [sing-box](https://github.com/SagerNet/sing-box) by SagerNet / nekohasekai.
+
+This project is not affiliated with, endorsed by, or an official product of the sing-box project.
+
+The project:
+
+- Retains upstream copyright notices
+- Follows upstream GPL-3.0 licensing requirements
+- Does not use the sing-box name as its product identity
+- Does not imply official association with the upstream project
+
+Upstream documentation:
+
+https://sing-box.sagernet.org
+
+---
+
+# 📄 License
+
+`zeytun-core` is licensed under the GNU General Public License v3.0.
+
+Upstream copyright and licensing terms are preserved. All Zeytun-specific modifications are distributed under the same GPL-3.0 license.
+
+See [`LICENSE`](./LICENSE) for the full license text.
