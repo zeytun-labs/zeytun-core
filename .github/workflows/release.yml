@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # Keep in sync with monorepo build-core.sh (desktop ships this set).
+  BUILD_TAGS: with_quic,with_grpc,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_v2ray_api,with_gvisor,with_embedded_tor,with_tailscale,with_ccm,with_ocm,with_naive_outbound,with_cloudflared,badlinkname
+
+jobs:
+  build:
+    name: build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: arm64
+            asset: zeytun-core-darwin-arm64
+          - goos: darwin
+            goarch: amd64
+            asset: zeytun-core-darwin-amd64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          VERSION="${GITHUB_REF_NAME}"
+          case "$VERSION" in
+            v*) ;;
+            *) VERSION="dev-${GITHUB_SHA::7}" ;;
+          esac
+          LDFLAGS="$(tr -d '\n' < release/LDFLAGS)"
+          go build -v -trimpath \
+            -tags "${BUILD_TAGS}" \
+            -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=${VERSION}' ${LDFLAGS} -s -w -buildid=" \
+            -o "dist/${{ matrix.asset }}" \
+            ./cmd/sing-box
+          chmod +x "dist/${{ matrix.asset }}"
+          tar -C dist -czf "dist/${{ matrix.asset }}.tar.gz" "${{ matrix.asset }}"
+          (cd dist && shasum -a 256 "${{ matrix.asset }}" "${{ matrix.asset }}.tar.gz" > "${{ matrix.asset }}.sha256")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List assets
+        run: ls -la dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
