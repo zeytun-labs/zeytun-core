@@ -1,3 +1,28 @@
+zeytun-core
+
+This project is a derivative work based on sing-box.
+
+Upstream project:
+sing-box
+https://github.com/SagerNet/sing-box
+
+Upstream copyright:
+Copyright (C) 2022 by nekohasekai <contact-sagernet@sekai.icu>
+
+Zeytun-specific modifications and additions:
+Copyright (C) 2026 Zeytun
+
+The majority of this codebase is derived from sing-box.
+All upstream copyright notices, license terms, and attribution
+requirements are preserved.
+
+Zeytun-specific changes are distributed under the same GNU
+General Public License v3.0 terms.
+
+---
+
+The original sing-box license follows:
+
 Copyright (C) 2022 by nekohasekai <contact-sagernet@sekai.icu>
 
 This program is free software: you can redistribute it and/or modify

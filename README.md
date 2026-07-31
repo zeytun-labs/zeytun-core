@@ -15,7 +15,7 @@ Unlike traditional proxy cores that mainly focus on forwarding traffic, `zeytun-
 
 ---
 
-# ✨ Zeytun Extensions
+## ✨ Zeytun Extensions
 
 `zeytun-core` is based on [sing-box](https://github.com/SagerNet/sing-box) and extends it with Zeytun-specific functionality focused on interactive routing, traffic visibility, and desktop integration.
 
@@ -113,7 +113,7 @@ Planned integrations:
 
 ---
 
-# 🔧 Configuration Compatibility
+## 🔧 Configuration Compatibility
 
 Where Zeytun-specific extensions are not required, configuration remains compatible with standard sing-box JSON configuration formats.
 
@@ -121,7 +121,7 @@ Existing sing-box configurations can be reused with minimal modifications.
 
 ---
 
-# 🏗 Architecture
+## 🏗 Architecture
 
 `zeytun-core` provides the networking foundation for future Zeytun clients:
 
@@ -164,29 +164,31 @@ Existing sing-box configurations can be reused with minimal modifications.
 ```
 ---
 
-# ⚖ Relationship to sing-box
+## ⚖ Relationship to sing-box
 
-`zeytun-core` is a derivative work of [sing-box](https://github.com/SagerNet/sing-box) by SagerNet / nekohasekai.
+`zeytun-core` is a fork and derivative work of [sing-box](https://github.com/SagerNet/sing-box) by SagerNet / nekohasekai.
+
+The project builds upon sing-box's networking foundation and adds Zeytun-specific capabilities, including:
+
+- Interactive routing workflows
+- Live routing rule injection
+- Desktop application integration interfaces
+- Additional routing and management features
 
 This project is not affiliated with, endorsed by, or an official product of the sing-box project.
 
-The project:
-
-- Retains upstream copyright notices
-- Follows upstream GPL-3.0 licensing requirements
-- Does not use the sing-box name as its product identity
-- Does not imply official association with the upstream project
-
-Upstream documentation:
-
-https://sing-box.sagernet.org
+Upstream copyright, attribution, and GPL-3.0 licensing requirements are preserved.
 
 ---
 
-# 📄 License
+## 📄 License
 
-`zeytun-core` is licensed under the GNU General Public License v3.0.
+`zeytun-core` is a derivative work based on [sing-box](https://github.com/SagerNet/sing-box).
 
-Upstream copyright and licensing terms are preserved. All Zeytun-specific modifications are distributed under the same GPL-3.0 license.
+The majority of the codebase originates from sing-box and remains subject to the original upstream copyright and GPL-3.0 license terms.
 
-See [`LICENSE`](./LICENSE) for the full license text.
+Zeytun-specific modifications and additions are distributed under the same GPL-3.0 license.
+
+All upstream copyright notices are preserved.
+
+See [`LICENSE`](./LICENSE) for the full license text and licensing information.
