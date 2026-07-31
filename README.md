@@ -1,7 +1,7 @@
 # 🫒 zeytun-core
 
 ![Go Version](https://img.shields.io/github/go-mod/go-version/sadeqi-ah/zeytun-core?style=flat-square)
-![License](https://img.shields.io/github/license/sadeqi-ah/zeytun-core?style=flat-square)
+![License](https://img.shields.io/badge/License-GPL%203.0%20Modified-blue.svg?style=flat-square)
 
 **Network and routing core for the [Zeytun](https://github.com/zeytun-labs) desktop app.**
 
