@@ -10,8 +10,7 @@ permissions:
   contents: write
 
 env:
-  # Keep in sync with monorepo build-core.sh (desktop ships this set).
-  BUILD_TAGS: with_quic,with_grpc,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_v2ray_api,with_gvisor,with_embedded_tor,with_tailscale,with_ccm,with_ocm,with_naive_outbound,with_cloudflared,badlinkname
+  BUILD_TAGS: with_quic,with_grpc,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_v2ray_api,with_gvisor,with_embedded_tor,with_tailscale,with_ccm,with_ocm,with_cloudflared,badlinkname
 
 jobs:
   build:
