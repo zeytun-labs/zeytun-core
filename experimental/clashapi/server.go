@@ -133,6 +133,7 @@ func NewServer(ctx context.Context, logFactory log.ObservableFactory, options op
 		r.Mount("/temp-rules", tempRulesRouter(s))
 		r.Mount("/permanent-rules", permanentRulesRouter(s))
 		r.Mount("/live-rules", liveRulesRouter(s))
+
 		r.Mount("/providers/proxies", proxyProviderRouter())
 		r.Mount("/providers/rules", ruleProviderRouter())
 		r.Mount("/script", scriptRouter())

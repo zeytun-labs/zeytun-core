@@ -30,6 +30,9 @@ type Router interface {
 	// DecideConnectionAsk resolves a held unmatched connection (id from CONNECTION_ASK event).
 	// No-op / error when ask mode off or id unknown.
 	DecideConnectionAsk(id, outbound string, reject bool) error
+	// ForgetAskSessionKeys removes cached ask decisions for the given group keys.
+	// Next connection from those processes/groups will trigger a fresh ask.
+	ForgetAskSessionKeys(keys []string)
 	// Live user rules (temp + permanent) without reloading config.
 	ReplaceTempRulesJSON(payload []byte) error
 	ReplacePermanentRulesJSON(payload []byte) error

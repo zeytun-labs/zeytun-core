@@ -10,6 +10,7 @@ import (
 func connectionAskRouter(server *Server) http.Handler {
 	r := chi.NewRouter()
 	r.Post("/decide", decideConnectionAsk(server))
+	r.Post("/forget", forgetAskSession(server))
 	return r
 }
 
@@ -48,6 +49,23 @@ func decideConnectionAsk(server *Server) func(w http.ResponseWriter, r *http.Req
 			render.JSON(w, r, newError(err.Error()))
 			return
 		}
+		render.NoContent(w, r)
+	}
+}
+
+type forgetAskSessionRequest struct {
+	Keys []string `json:"keys"`
+}
+
+func forgetAskSession(server *Server) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body forgetAskSessionRequest
+		if err := render.DecodeJSON(r.Body, &body); err != nil {
+			render.Status(r, http.StatusBadRequest)
+			render.JSON(w, r, ErrBadRequest)
+			return
+		}
+		server.router.ForgetAskSessionKeys(body.Keys)
 		render.NoContent(w, r)
 	}
 }

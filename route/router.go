@@ -106,6 +106,13 @@ func (r *Router) DecideConnectionAsk(id, outbound string, reject bool) error {
 	return r.connectionAsk.Decide(id, outbound, reject)
 }
 
+// ForgetAskSessionKeys removes cached ask decisions for the given group keys.
+func (r *Router) ForgetAskSessionKeys(keys []string) {
+	if r.connectionAsk != nil && r.connectionAsk.Enabled() {
+		r.connectionAsk.ForgetKeys(keys)
+	}
+}
+
 func (r *Router) markProcessFromSpecs(items []LiveRuleSpec) {
 	for _, item := range items {
 		if item.Rule.Type == "" || item.Rule.Type == C.RuleTypeDefault {

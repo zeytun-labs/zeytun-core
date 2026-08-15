@@ -140,3 +140,4 @@ func TestRuleSetItemRestartKeepsBalancedRefs(t *testing.T) {
 	require.NoError(t, item.Close())
 	require.Zero(t, firstSet.RefCount())
 }
+func (r *ruleSetItemTestRouter) ForgetAskSessionKeys([]string) {}

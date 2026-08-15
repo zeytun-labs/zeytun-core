@@ -197,6 +197,16 @@ func (a *ConnectionAsk) Decide(id, outbound string, reject bool) error {
 	return nil
 }
 
+// ForgetKeys removes cached ask decisions for the given group keys.
+// Next connection matching any of these keys will trigger a fresh ask.
+func (a *ConnectionAsk) ForgetKeys(keys []string) {
+	a.access.Lock()
+	defer a.access.Unlock()
+	for _, k := range keys {
+		delete(a.session, k)
+	}
+}
+
 func metaAttrs(meta *adapter.InboundContext, key, groupBy string, timeout time.Duration) map[string]string {
 	attrs := map[string]string{
 		"group_by":   groupBy,
