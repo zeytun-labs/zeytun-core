@@ -1,6 +1,6 @@
 # 🫒 zeytun-core
 
-![Go Version](https://img.shields.io/github/go-mod/go-version/sadeqi-ah/zeytun-core?style=flat-square)
+![Go Version](https://img.shields.io/github/go-mod/go-version/zeytun-labs/zeytun-core?style=flat-square)
 ![License](https://img.shields.io/badge/License-GPL%203.0-blue.svg?style=flat-square)
 
 **Application-aware network routing and traffic control engine for the Zeytun ecosystem.**

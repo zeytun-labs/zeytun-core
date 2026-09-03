@@ -22,7 +22,9 @@ GNU General Public License v3.0
 
 ### Zeytun Modifications
 
-Zeytun-specific modifications and additions are developed by Zeytun and distributed under the same GNU General Public License v3.0 terms.
+Copyright (C) 2026 Zeytun
+
+Zeytun-specific modifications and additions are developed by Zeytun and distributed under the same GNU General Public License v3.0 terms. The full license text is in `LICENSE`.
 
 These modifications include, but are not limited to:
 
