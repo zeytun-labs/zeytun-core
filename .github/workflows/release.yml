@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 env:
-  BUILD_TAGS: with_quic,with_grpc,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_v2ray_api,with_gvisor,with_embedded_tor,with_tailscale,with_ccm,with_ocm,with_cloudflared,badlinkname
+  BUILD_TAGS: with_quic,with_grpc,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_v2ray_api,with_gvisor,with_embedded_tor,with_tailscale,with_ccm,with_ocm,with_naive_outbound,with_cloudflared,badlinkname
 
 jobs:
   build:
@@ -76,6 +76,37 @@ jobs:
 
       - name: List assets
         run: ls -la dist
+
+      - name: Build core manifest
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME}"
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}"
+          {
+            echo "{"
+            echo "  \"version\": \"${VERSION}\","
+            echo "  \"pub_date\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\","
+            echo "  \"platforms\": {"
+            first=1
+            for f in dist/zeytun-core-*.tar.gz; do
+              name="$(basename "$f" .tar.gz)"
+              key="${name#zeytun-core-}"
+              case "$key" in
+                darwin-arm64) key="macos-aarch64" ;;
+                darwin-amd64) key="macos-x86_64" ;;
+                linux-amd64)  key="linux-x86_64" ;;
+                linux-arm64)  key="linux-aarch64" ;;
+              esac
+              sha="$(shasum -a 256 "$f" | cut -d' ' -f1)"
+              [ $first -eq 1 ] || echo ","
+              first=0
+              printf '    "%s": { "url": "%s/%s.tar.gz", "sha256": "%s" }' "$key" "$BASE" "$name" "$sha"
+            done
+            echo ""
+            echo "  }"
+            echo "}"
+          } > dist/core-manifest.json
+          cat dist/core-manifest.json
 
       - uses: softprops/action-gh-release@v2
         with:
