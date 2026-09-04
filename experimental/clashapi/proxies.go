@@ -223,7 +223,13 @@ func getProxyDelay(server *Server) func(w http.ResponseWriter, r *http.Request) 
 
 		if err != nil || delay == 0 {
 			render.Status(r, http.StatusServiceUnavailable)
-			render.JSON(w, r, newError("An error occurred in the delay test"))
+			// Report why the probe failed. Discarding `err` here left the app with
+			// a bare 503 and no way to tell a DNS failure from a dead outbound.
+			if err != nil {
+				render.JSON(w, r, newError(err.Error()))
+			} else {
+				render.JSON(w, r, newError("delay test returned 0 ms"))
+			}
 			return
 		}
 
