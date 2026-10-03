@@ -10,6 +10,7 @@ import (
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/experimental/clashmode"
+	"github.com/sagernet/sing-box/experimental/coreevent"
 	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/experimental/locale"
 	"github.com/sagernet/sing-box/log"
@@ -87,6 +88,10 @@ func (s *StartedService) newInstance(ctx context.Context, profileContent string,
 	ctx, _ = locale.ContextWithLocale(s.ctx, selectedLocale.Locale)
 	ctx = service.ExtendContext(ctx)
 	service.MustRegister[deprecated.Manager](ctx, new(deprecatedManager))
+	if s.eventHub == nil {
+		s.eventHub = coreevent.NewHub()
+	}
+	service.MustRegister[*coreevent.Hub](ctx, s.eventHub)
 	ctx, cancel := context.WithCancel(ctx)
 	options, err := parseConfig(ctx, profileContent)
 	if err != nil {
