@@ -145,7 +145,31 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 		}
 	}
 	if selectedRule == nil {
-		selectedOutbound = r.outbound.Default()
+		// Ask mode: hold unmatched TCP until UI Decide or timeout→final.
+		if r.connectionAsk != nil && r.connectionAsk.Enabled() {
+			if decision, ok := r.connectionAsk.Resolve(ctx, &metadata); ok {
+				if decision.Reject {
+					buf.ReleaseMulti(buffers)
+					return E.New("connection rejected by user")
+				}
+				if decision.Outbound != "" {
+					var loaded bool
+					selectedOutbound, loaded = r.outbound.Outbound(decision.Outbound)
+					if !loaded {
+						buf.ReleaseMulti(buffers)
+						return E.New("outbound not found: ", decision.Outbound)
+					}
+					if !common.Contains(selectedOutbound.Network(), N.NetworkTCP) {
+						buf.ReleaseMulti(buffers)
+						return E.New("TCP is not supported by outbound: ", selectedOutbound.Tag())
+					}
+					r.logger.InfoContext(ctx, "connection ask → ", selectedOutbound.Tag())
+				}
+			}
+		}
+		if selectedOutbound == nil {
+			selectedOutbound = r.outbound.Default()
+		}
 	}
 	chain, err := resolveOutbound(selectedOutbound, N.NetworkTCP)
 	if err != nil {
@@ -628,6 +652,13 @@ func (r *Router) matchRule(
 		return
 	}
 
+	// User live rules: temp → (system r.rules = clash/rulesets) → permanent user.
+	if r.liveRules != nil {
+		if hit := takeLiveHit(r, ctx, r.liveRules.MatchTemp(metadata), "temp"); hit != nil {
+			return hit, -1, nil, nil, nil
+		}
+	}
+
 match:
 	for currentRuleIndex, currentRule := range r.rules {
 		metadata.ResetRuleCache()
@@ -729,7 +760,33 @@ match:
 			break match
 		}
 	}
+	if selectedRule == nil && r.liveRules != nil {
+		if hit := takeLiveHit(r, ctx, r.liveRules.MatchPermanent(metadata), "user"); hit != nil {
+			selectedRule = hit
+			selectedRuleIndex = -2
+		}
+	}
 	return
+}
+
+func takeLiveHit(r *Router, ctx context.Context, rule adapter.Rule, tag string) adapter.Rule {
+	if rule == nil {
+		return nil
+	}
+	actionType := rule.Action().Type()
+	if actionType == C.RuleActionTypeRoute ||
+		actionType == C.RuleActionTypeReject ||
+		actionType == C.RuleActionTypeHijackDNS {
+		r.logger.DebugContext(ctx, "match[", tag, "] ", rule, " => ", rule.Action())
+		return rule
+	}
+	if actionType == C.RuleActionTypeBypass {
+		if bypass, ok := rule.Action().(*R.RuleActionBypass); ok && bypass.Outbound != "" {
+			r.logger.DebugContext(ctx, "match[", tag, "] ", rule, " => ", rule.Action())
+			return rule
+		}
+	}
+	return nil
 }
 
 func (r *Router) actionSniff(

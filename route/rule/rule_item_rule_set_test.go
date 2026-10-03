@@ -50,6 +50,13 @@ func (r *ruleSetItemTestRouter) NeedFindNeighbor() bool                     { re
 func (r *ruleSetItemTestRouter) NeighborResolver() adapter.NeighborResolver { return nil }
 func (r *ruleSetItemTestRouter) AppendTracker(adapter.ConnectionTracker)    {}
 func (r *ruleSetItemTestRouter) ResetNetwork()                              {}
+func (r *ruleSetItemTestRouter) DecideConnectionAsk(string, string, bool) error {
+	return nil
+}
+func (r *ruleSetItemTestRouter) ForgetAskSessionKeys([]string)          {}
+func (r *ruleSetItemTestRouter) ReplaceTempRulesJSON([]byte) error      { return nil }
+func (r *ruleSetItemTestRouter) ReplacePermanentRulesJSON([]byte) error { return nil }
+func (r *ruleSetItemTestRouter) ReplaceLiveRulesJSON([]byte) error      { return nil }
 
 type countingRuleSet struct {
 	name string
