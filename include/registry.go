@@ -24,6 +24,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/bridge"
 	"github.com/sagernet/sing-box/protocol/direct"
 	"github.com/sagernet/sing-box/protocol/group"
+	"github.com/sagernet/sing-box/protocol/group/balancer"
 	"github.com/sagernet/sing-box/protocol/http"
 	"github.com/sagernet/sing-box/protocol/masque"
 	"github.com/sagernet/sing-box/protocol/mixed"
@@ -89,6 +90,7 @@ func OutboundRegistry() *outbound.Registry {
 
 	group.RegisterSelector(registry)
 	group.RegisterURLTest(registry)
+	balancer.RegisterLoadBalance(registry)
 
 	socks.RegisterOutbound(registry)
 	http.RegisterOutbound(registry)
