@@ -51,9 +51,12 @@ func readConfigAt(path string) (*OptionsEntry, error) {
 		err           error
 	)
 	if path == "stdin" {
+		if runningAsRoot() {
+			return nil, E.New("refusing to read config from stdin as root")
+		}
 		configContent, err = io.ReadAll(os.Stdin)
 	} else {
-		configContent, err = os.ReadFile(path)
+		configContent, err = readConfigFile(path)
 	}
 	if err != nil {
 		return nil, E.Cause(err, "read config at ", path)

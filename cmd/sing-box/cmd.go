@@ -49,6 +49,25 @@ func preRun(cmd *cobra.Command, args []string) {
 			sudoGID, _ = strconv.Atoi(sudoUserObject.Gid)
 		}
 	}
+	if runningSetuid() {
+		// argv, env and cwd belong to the unprivileged caller. Files we
+		// create stay root-owned (no chown to the caller), relative paths in
+		// the config resolve inside the trusted config directory, and the
+		// caller's environment is dropped.
+		sudoUID, sudoGID = 0, 0
+		if workingDir != "" {
+			log.Fatal("refusing to use -D with setuid privileges")
+		}
+		switch cmd.Name() {
+		case "run", "check":
+			err := enterPrivilegedWorkdir()
+			if err != nil {
+				log.Fatal(err)
+			}
+		default:
+			resetPrivilegedEnv()
+		}
+	}
 	if sudoUID > 0 && sudoGID > 0 {
 		globalCtx = filemanager.WithDefault(globalCtx, "", "", sudoUID, sudoGID)
 	}
