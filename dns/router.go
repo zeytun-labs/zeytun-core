@@ -413,7 +413,18 @@ func (r *Router) resolveDNSRoute(server string, routeOptions R.RuleActionDNSRout
 	return transport, dnsRouteStatusResolved
 }
 
+func recordDiagnosticRuleMatch(ctx context.Context, ruleIndex int, currentRule adapter.DNSRule) {
+	switch action := currentRule.Action().(type) {
+	case *R.RuleActionDNSRoute:
+		adapter.RecordDNSDiagnosticRule(ctx, ruleIndex, currentRule.String()+" => "+action.String(), action.Server)
+	case *R.RuleActionRespond, *R.RuleActionReject, *R.RuleActionPredefined:
+		adapter.RecordDNSDiagnosticRule(ctx, ruleIndex, currentRule.String()+" => "+currentRule.Action().String(), "")
+	}
+
+}
+
 func (r *Router) logRuleMatch(ctx context.Context, ruleIndex int, currentRule adapter.DNSRule) {
+	recordDiagnosticRuleMatch(ctx, ruleIndex, currentRule)
 	if ruleDescription := currentRule.String(); ruleDescription != "" {
 		r.logger.DebugContext(ctx, "match[", ruleIndex, "] ", currentRule, " => ", currentRule.Action())
 	} else {
@@ -1051,6 +1062,7 @@ type dnsExchangeContext struct {
 }
 
 func (r *Router) prepareExchange(ctx context.Context, message *mDNS.Msg) (*dnsExchangeContext, *mDNS.Msg, error) {
+	ctx = adapter.DNSDiagnosticContext(ctx, message)
 	if r.powerManager != nil {
 		recorder := r.powerManager.Recorder()
 		if recorder != nil {
@@ -1143,7 +1155,11 @@ func (r *Router) exchangeLegacy(ctx context.Context, exchangeCtx *dnsExchangeCon
 	for {
 		dnsCtx := adapter.OverrideContext(ctx)
 		dnsOptions := options
+		adapter.ResetDNSDiagnosticRule(ctx)
 		transport, rule, ruleIndex = r.matchDNS(ctx, exchangeCtx.rules, true, ruleIndex, isAddressQuery(message), &dnsOptions)
+		if rule != nil {
+			recordDiagnosticRuleMatch(ctx, ruleIndex, rule)
+		}
 		if rule != nil {
 			switch action := rule.Action().(type) {
 			case *R.RuleActionReject:
@@ -1209,6 +1225,7 @@ func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg, options adapte
 	if err != nil {
 		return nil, err
 	}
+	adapter.CompleteDNSDiagnostic(ctx, response, transport, options.Transport != nil)
 	r.recordReverseMapping(message, response, transport)
 	return response, nil
 }

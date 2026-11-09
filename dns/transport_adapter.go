@@ -9,6 +9,7 @@ type TransportAdapter struct {
 	transportTag  string
 	dependencies  []string
 	references    []string
+	network       bool
 }
 
 func NewTransportAdapter(transportType string, transportTag string, dependencies []string) TransportAdapter {
@@ -33,6 +34,7 @@ func NewTransportAdapterWithLocalOptions(transportType string, transportTag stri
 		transportTag:  transportTag,
 		dependencies:  dependencies,
 		references:    references,
+		network:       true,
 	}
 }
 
@@ -50,6 +52,7 @@ func NewTransportAdapterWithRemoteOptions(transportType string, transportTag str
 		transportTag:  transportTag,
 		dependencies:  dependencies,
 		references:    references,
+		network:       true,
 	}
 }
 
@@ -67,4 +70,16 @@ func (a *TransportAdapter) Dependencies() []string {
 
 func (a *TransportAdapter) References() []string {
 	return a.references
+}
+
+// DiagnosticOutbound is the configured runtime detour, not an inferred route
+// from the app's saved profile. A policy tag may select a changing child proxy.
+func (a *TransportAdapter) DiagnosticOutbound() string {
+	if len(a.references) > 0 {
+		return a.references[0]
+	}
+	if a.network {
+		return "direct"
+	}
+	return ""
 }

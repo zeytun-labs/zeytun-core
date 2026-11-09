@@ -3,6 +3,7 @@ package clashapi
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
@@ -15,6 +16,10 @@ import (
 
 func dnsRouter(router adapter.DNSRouter) http.Handler {
 	r := chi.NewRouter()
+	r.Get("/capabilities", func(w http.ResponseWriter, request *http.Request) {
+		_, supported := router.(adapter.DNSDiagnosticRouter)
+		render.JSON(w, request, render.M{"diagnostics_version": 1, "explicit_server": supported, "bypass_cache": supported})
+	})
 	r.Get("/query", queryDNS(router))
 	return r
 }
@@ -22,7 +27,7 @@ func dnsRouter(router adapter.DNSRouter) http.Handler {
 func queryDNS(router adapter.DNSRouter) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Query().Get("name")
-		qTypeStr := r.URL.Query().Get("type")
+		qTypeStr := strings.ToUpper(r.URL.Query().Get("type"))
 		if qTypeStr == "" {
 			qTypeStr = "A"
 		}
@@ -34,12 +39,32 @@ func queryDNS(router adapter.DNSRouter) func(w http.ResponseWriter, r *http.Requ
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), C.DNSTimeout)
+		ctx, cancel := context.WithTimeout(r.Context(), C.DNSTimeout)
 		defer cancel()
 
 		msg := dns.Msg{}
 		msg.SetQuestion(dns.Fqdn(name), qType)
-		resp, err := router.Exchange(ctx, &msg, adapter.DNSQueryOptions{})
+		var resp *dns.Msg
+		var diagnostic *adapter.DNSQueryDiagnostic
+		var err error
+		server := r.URL.Query().Get("server")
+		bypassValue := r.URL.Query().Get("bypass_cache")
+		if bypassValue != "" && bypassValue != "true" && bypassValue != "false" {
+			render.Status(r, http.StatusBadRequest)
+			render.JSON(w, r, newError("invalid bypass_cache value"))
+			return
+		}
+		if traced, supported := router.(adapter.DNSDiagnosticRouter); supported {
+			var trace adapter.DNSQueryDiagnostic
+			resp, trace, err = traced.ExchangeWithDiagnostics(ctx, &msg, server, bypassValue == "true")
+			diagnostic = &trace
+		} else if server != "" || bypassValue == "true" {
+			render.Status(r, http.StatusNotImplemented)
+			render.JSON(w, r, newError("DNS diagnostics require an updated core"))
+			return
+		} else {
+			resp, err = router.Exchange(ctx, &msg, adapter.DNSQueryOptions{})
+		}
 		if err != nil {
 			render.Status(r, http.StatusInternalServerError)
 			render.JSON(w, r, newError(err.Error()))
@@ -57,6 +82,12 @@ func queryDNS(router adapter.DNSRouter) func(w http.ResponseWriter, r *http.Requ
 			"CD":       resp.CheckingDisabled,
 		}
 
+		if diagnostic != nil {
+			responseData["Trace"] = diagnostic
+			if diagnostic.Server != "" {
+				responseData["Server"] = diagnostic.Server
+			}
+		}
 		rr2Json := func(rr dns.RR) render.M {
 			header := rr.Header()
 			return render.M{

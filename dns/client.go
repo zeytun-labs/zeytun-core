@@ -256,6 +256,7 @@ func (o *exchangeOperation) release() {
 }
 
 func (c *Client) beginExchange(ctx context.Context, transport adapter.DNSTransport, message *dns.Msg, options adapter.DNSQueryOptions, responseChecker func(response *dns.Msg) bool, allowWait bool) (*exchangeOperation, *dns.Msg, exchangeStatus, error) {
+	ctx = adapter.DNSDiagnosticContext(ctx, message)
 	err := ctx.Err()
 	if err != nil {
 		return nil, nil, exchangeDone, err
@@ -308,11 +309,13 @@ func (c *Client) beginExchange(ctx context.Context, transport adapter.DNSTranspo
 			if response != nil {
 				if isStale && !options.DisableOptimisticCache {
 					c.backgroundRefreshDNS(transport, cacheKey, message.Copy(), options, responseChecker)
+					adapter.RecordDNSDiagnosticResponse(ctx, response, true, "optimistic_cache")
 					logOptimisticResponse(c.logger, ctx, response)
 					response.Id = message.Id
 					operation.release()
 					return nil, response, exchangeDone, nil
 				} else if !isStale {
+					adapter.RecordDNSDiagnosticResponse(ctx, response, true, "cache")
 					logCachedResponse(c.logger, ctx, response, ttl)
 					response.Id = message.Id
 					operation.release()
@@ -393,6 +396,7 @@ func (c *Client) finishExchange(transport adapter.DNSTransport, operation *excha
 			response.SetEdns0(responseEDNSOpt.UDPSize(), responseEDNSOpt.Do())
 		}
 	}
+	adapter.RecordDNSDiagnosticResponse(ctx, response, false, "upstream")
 	logExchangedResponse(c.logger, ctx, response, timeToLive)
 	return response, nil
 }
