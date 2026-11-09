@@ -14,6 +14,7 @@ import (
 
 	"github.com/sagernet/cors"
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/listener"
 	"github.com/sagernet/sing-box/common/trafficcontrol"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
@@ -157,11 +158,11 @@ func (s *Server) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if s.externalController {
 		s.checkAndDownloadExternalUI()
 		var (
-			listener net.Listener
-			err      error
+			controlListener net.Listener
+			err             error
 		)
 		for range 3 {
-			listener, err = net.Listen("tcp", s.httpServer.Addr)
+			controlListener, err = net.Listen("tcp", s.httpServer.Addr)
 			if runtime.GOOS == "android" && errors.Is(err, syscall.EADDRINUSE) {
 				time.Sleep(100 * time.Millisecond)
 				continue
@@ -171,10 +172,11 @@ func (s *Server) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 		if err != nil {
 			return E.Cause(err, "external controller listen error")
 		}
+		controlListener = listener.AbortiveCloseWhenRoot(controlListener)
 		scope.Add(s.httpServer.Close)
-		s.logger.Info("restful api listening at ", listener.Addr())
+		s.logger.Info("restful api listening at ", controlListener.Addr())
 		go func() {
-			err = s.httpServer.Serve(listener)
+			err = s.httpServer.Serve(controlListener)
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				s.logger.Error("external controller serve error: ", err)
 			}

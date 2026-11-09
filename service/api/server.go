@@ -107,6 +107,7 @@ func (s *Service) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 		return err
 	}
 	scope.Add(s.listener.Close)
+	tcpListener = listener.AbortiveCloseWhenRoot(tcpListener)
 	if s.tlsConfig != nil {
 		tcpListener = aTLS.NewListener(tcpListener, s.tlsConfig)
 	}
