@@ -535,6 +535,10 @@ func (t *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 				return E.Cause(err, "auto-redirect")
 			}
 		}
+	case adapter.StartStateStarted:
+		if err := t.startNativeDNS(scope); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -124,6 +124,7 @@ import (
 	"unsafe"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/systemdns"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
 	M "github.com/sagernet/sing/common/metadata"
@@ -235,14 +236,28 @@ type dnsInfoConfig struct {
 }
 
 func (c *dnsInfoConfig) build(interfaceIndex int) *Config {
+	// Only uplink resolvers may serve Local/System. A session-owned TUN DNS
+	// resolver would recurse through the DNS router back into this transport.
+	filtered := func(resolvers []dnsInfoResolver) []dnsInfoResolver {
+		result := make([]dnsInfoResolver, 0, len(resolvers))
+		for _, resolver := range resolvers {
+			resolver.servers = common.Filter(resolver.servers, func(server M.Socksaddr) bool {
+				return !systemdns.IsManaged(server.Addr)
+			})
+			if len(resolver.servers) > 0 {
+				result = append(result, resolver)
+			}
+		}
+		return result
+	}
 	var selected dnsInfoResolver
 	if interfaceIndex != 0 {
-		selected = common.Find(c.scopedResolvers, func(it dnsInfoResolver) bool {
+		selected = common.Find(filtered(c.scopedResolvers), func(it dnsInfoResolver) bool {
 			return it.interfaceIndex == interfaceIndex && len(it.servers) > 0
 		})
 	}
 	if len(selected.servers) == 0 {
-		selected = common.Find(c.resolvers, func(it dnsInfoResolver) bool {
+		selected = common.Find(filtered(c.resolvers), func(it dnsInfoResolver) bool {
 			return it.domain == "" && len(it.servers) > 0
 		})
 	}
