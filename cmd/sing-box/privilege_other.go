@@ -16,6 +16,12 @@ func checkPrivilegedInvocation(args []string) error {
 	return nil
 }
 
+func enterPrivilegedWorkdir() error {
+	return nil
+}
+
+func resetPrivilegedEnv() {}
+
 func readConfigFile(path string) ([]byte, error) {
 	return os.ReadFile(path)
 }

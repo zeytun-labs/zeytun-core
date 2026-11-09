@@ -50,12 +50,22 @@ func preRun(cmd *cobra.Command, args []string) {
 		}
 	}
 	if runningSetuid() {
-		// The environment belongs to the unprivileged caller: never let it
-		// pick who owns the files we create, and never chdir/mkdir as root
-		// on its behalf.
-		sudoUID, sudoGID = os.Getuid(), os.Getgid()
+		// argv, env and cwd belong to the unprivileged caller. Files we
+		// create stay root-owned (no chown to the caller), relative paths in
+		// the config resolve inside the trusted config directory, and the
+		// caller's environment is dropped.
+		sudoUID, sudoGID = 0, 0
 		if workingDir != "" {
 			log.Fatal("refusing to use -D with setuid privileges")
+		}
+		switch cmd.Name() {
+		case "run", "check":
+			err := enterPrivilegedWorkdir()
+			if err != nil {
+				log.Fatal(err)
+			}
+		default:
+			resetPrivilegedEnv()
 		}
 	}
 	if sudoUID > 0 && sudoGID > 0 {

@@ -34,6 +34,53 @@ func checkPrivilegedInvocation(args []string) error {
 	return nil
 }
 
+// enterPrivilegedWorkdir pins a setuid run to the directory of its single
+// config file. Without this, a relative path in a trusted config (the
+// default `cache_file` is "cache.db") resolves against the caller's cwd, and
+// a symlink planted there makes root create files wherever the caller wants.
+func enterPrivilegedWorkdir() error {
+	if len(configDirectories) != 0 || len(configPaths) != 1 || configPaths[0] == "stdin" {
+		return E.New("refusing setuid run: exactly one -c config file is required")
+	}
+	absPath, err := filepath.Abs(configPaths[0])
+	if err != nil {
+		return err
+	}
+	err = os.Chdir(filepath.Dir(absPath))
+	if err != nil {
+		return E.Cause(err, "enter config directory")
+	}
+	// Validate the directory we are now in by inode, not by path, so it
+	// cannot be swapped between the check and later relative file creation.
+	err = validateWorkdir(".")
+	if err != nil {
+		return err
+	}
+	configPaths[0] = filepath.Base(absPath)
+	resetPrivilegedEnv()
+	return nil
+}
+
+func validateWorkdir(dir string) error {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return E.New("refusing to run as root: cannot read owner of working directory")
+	}
+	cwd, _ := os.Getwd()
+	return validateTrustedOwner("working directory", cwd, uint32(stat.Uid), info.Mode())
+}
+
+// resetPrivilegedEnv drops the caller's environment (HOME, TMPDIR, proxy and
+// TLS variables, ...) so none of it steers what the root process does.
+func resetPrivilegedEnv() {
+	os.Clearenv()
+	_ = os.Setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+}
+
 // readConfigFile reads a config file, enforcing the root-ownership rule when
 // running as root.
 func readConfigFile(path string) ([]byte, error) {
